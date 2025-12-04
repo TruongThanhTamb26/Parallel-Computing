@@ -38,8 +38,8 @@ make parallel GRID_N=64
 Provide the CSV path as the first argument in both modes:
 
 ```bash
-./Lab2_sequence input.csv
-mpirun -np 4 ./Lab2_parallel input.csv
+./Lab2_sequence radioactive_matrix.csv
+mpirun -np 4 ./Lab2_parallel radioactive_matrix.csv
 ```
 
 The parallel program assumes `N` is divisible by the inferred process grid dimensions (`MPI_Dims_create`). Adjust `GRID_N` or the process count if needed.
