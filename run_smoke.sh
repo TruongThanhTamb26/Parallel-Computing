@@ -4,19 +4,34 @@ cd "$(dirname "$0")"
 
 # Build both programs with a small grid (fast)
 GRID=64
+CSV=radioactive_matrix.csv
 echo "Building with GRID_N=${GRID} (fast smoke test)"
 make clean >/dev/null 2>&1 || true
 make seq GRID_N=${GRID}
 make parallel GRID_N=${GRID}
 
+echo "Generating ${CSV} (${GRID}x${GRID})"
+python3 - <<PY
+import csv
+N = ${GRID}
+mid = N // 2
+with open("${CSV}", "w", newline="") as f:
+  writer = csv.writer(f)
+  for i in range(N):
+    row = [0.0] * N
+    if i == mid:
+      row[mid] = 1e6
+    writer.writerow(row)
+PY
+
 # Run sequential
 echo "Running sequential..."
-./Lab2_sequence | tee seq.out
+./Lab2_sequence ${CSV} | tee seq.out
 
 # Run parallel with 4 processes (or fewer if not available)
 NP=4
 echo "Running parallel (np=${NP})..."
-mpirun -np ${NP} ./Lab2_parallel | tee par.out
+mpirun -np ${NP} ./Lab2_parallel ${CSV} | tee par.out
 
 # Show outputs
 echo "--- sequential output ---"

@@ -1,39 +1,62 @@
 Lab2 - Improved sequential and MPI parallel implementations
 
-Files:
+## Files
 
-- `Lab2_sequence.cpp` - optimized sequential version (no MPI dependency). Uses flat arrays and a single swap per timestep.
-- `Lab2_parallel.cpp` - improved MPI-parallel implementation using a 2D Cartesian communicator, halo exchange, scatter/gather and reductions.
-- `Makefile` - targets `seq` and `parallel` to build the two executables.
+- `Lab2_sequence.cpp` – optimized sequential version (no MPI dependency). Uses flat arrays, CSV initialization, and a single swap per timestep.
+- `Lab2_parallel.cpp` – MPI version using a 2D Cartesian communicator, halo exchange (point-to-point), MPI_Scatter/Gather, MPI_Reduce, and MPI_Bcast.
+- `Makefile` – builds both targets. Accepts `GRID_N=<size>` to compile with a smaller grid (passes `-DN=<size>`).
+- `run_smoke.sh` – optional helper script that builds with a tiny grid, generates a sample CSV, runs both executables, and compares checksums.
 
-Build:
+## Input format (CSV)
 
-1. Sequential (no MPI required):
+Both executables now require a CSV file describing the initial concentration map:
 
-   make seq
+- Exactly `N` rows and `N` comma-separated values per row (where `N` is the compile-time grid size, default 4000).
+- Values are interpreted as doubles. Whitespace around commas is allowed.
+- Example row: `0,0,0,1000000,0,...`
 
-   This produces `Lab2_sequence`.
+If the CSV shape is invalid, the program exits with an error.
 
-2. Parallel (requires MPI, e.g., OpenMPI or MPICH):
+## Build
 
-   make parallel
+Sequential (no MPI needed):
 
-   This produces `Lab2_parallel`.
+```bash
+make seq              # builds with default N=4000
+make seq GRID_N=64    # builds with a smaller compile-time grid
+```
 
-Run:
+Parallel (requires OpenMPI/MPICH):
 
-1. Run sequential program:
+```bash
+make parallel
+make parallel GRID_N=64
+```
 
-   ./Lab2_sequence
+## Run
 
-2. Run parallel program (example with 4 processes):
+Provide the CSV path as the first argument in both modes:
 
-   mpirun -np 4 ./Lab2_parallel
+```bash
+./Lab2_sequence input.csv
+mpirun -np 4 ./Lab2_parallel input.csv
+```
 
-Notes / improvements made:
+The parallel program assumes `N` is divisible by the inferred process grid dimensions (`MPI_Dims_create`). Adjust `GRID_N` or the process count if needed.
 
-- Removed unnecessary MPI dependency from the sequential implementation and improved memory/cache usage.
-- In the parallel code: validated Cartesian communicator creation, made scatter/gather safe by only providing root buffers on the root process, used unique tags for halo exchanges, swapped buffers to avoid expensive element-wise copies, and freed MPI types/communicators cleanly.
-- The parallel code assumes `N` is divisible by the process grid dimensions. If not, adjust `N` or the process grid.
+## Smoke test (quick check)
 
-If you want, I can attempt to compile and run both here to validate; tell me which one to try first.
+The script builds everything with `GRID_N=64`, generates a centered source CSV, and compares the sequential/parallel checksums:
+
+```bash
+chmod +x run_smoke.sh
+./run_smoke.sh
+```
+
+The script generates a `radioactive_matrix.csv` test map (with a central source) and feeds it to both executables.
+
+## Notes
+
+- Sequential improvements: flat arrays, better cache locality, CSV-driven initialization, and checksum reporting to prevent dead-code elimination.
+- Parallel improvements: safe scatter/gather buffer handling, derived datatype for halo columns, ghost-layer swapping, per-iteration barriers, and clean communicator/datatype teardown.
+- `GRID_N` controls both the compiled domain size and the expected CSV dimensions; keep them in sync.

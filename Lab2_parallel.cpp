@@ -3,6 +3,9 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 // Constants (N can be overridden at compile time: -DN=...)
 #ifndef N
@@ -18,12 +21,68 @@ const double dy = 10.0;
 const double dt = 1.0;
 const int ITERATIONS = 100;
 
+bool load_grid_from_csv(const std::string& path, std::vector<double>& grid) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open CSV file: " << path << std::endl;
+        return false;
+    }
+
+    grid.assign(static_cast<size_t>(N) * N, 0.0);
+    std::string line;
+    int row = 0;
+
+    while (row < N && std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream line_stream(line);
+        std::string cell;
+        int col = 0;
+
+        while (col < N && std::getline(line_stream, cell, ',')) {
+            std::stringstream cell_stream(cell);
+            double value = 0.0;
+            if (!(cell_stream >> value)) {
+                std::cerr << "Invalid numeric value at row " << row << ", column " << col
+                          << " in " << path << std::endl;
+                return false;
+            }
+            grid[static_cast<size_t>(row) * N + col] = value;
+            ++col;
+        }
+
+        if (col != N) {
+            std::cerr << "Row " << row << " in " << path << " has " << col
+                      << " columns, expected " << N << std::endl;
+            return false;
+        }
+        ++row;
+    }
+
+    if (row != N) {
+        std::cerr << "CSV file " << path << " has " << row << " rows, expected " << N << std::endl;
+        return false;
+    }
+    return true;
+}
+
 int main(int argc, char** argv) {
     MPI_Init(&argc, &argv);
 
     int world_rank, world_size;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+
+    if (argc < 2) {
+        if (world_rank == 0) {
+            std::cerr << "Usage: " << argv[0] << " <input.csv>" << std::endl;
+        }
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+
+    const std::string csv_path = argv[1];
 
     // -------------------------------------------------------------------------
     // 1. Setup Cartesian Topology (Grid of Processes)
@@ -81,10 +140,10 @@ int main(int argc, char** argv) {
     // Buffer on root to hold the re-ordered data for scattering
     std::vector<double> send_buffer;
     if (cart_rank == 0) {
-        std::vector<double> global_grid(static_cast<size_t>(N) * N, 0.0);
-        // place source in the center
-        int mid = N / 2;
-        global_grid[mid * N + mid] = 1e6;
+        std::vector<double> global_grid;
+        if (!load_grid_from_csv(csv_path, global_grid)) {
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
 
         send_buffer.resize(static_cast<size_t>(N) * N);
 
@@ -253,6 +312,11 @@ int main(int argc, char** argv) {
         
         double end_time = MPI_Wtime();
         std::cout << "Parallel Time (2D Blocks): " << end_time - start_time << " s" << std::endl;
+        double checksum = 0.0;
+        for (size_t i = 0; i < final_grid.size() && i < 1000; ++i) {
+            checksum += final_grid[i];
+        }
+        std::cout << "checksum(sample) = " << checksum << std::endl;
     }
 
     MPI_Type_free(&col_type);

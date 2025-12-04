@@ -3,6 +3,9 @@
 #include <vector>
 #include <chrono>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 // Grid / physics constants
 // Grid size can be overridden at compile-time with -DN=<value>
@@ -21,14 +24,66 @@ static const int ITERATIONS = 100;
 
 inline size_t idx(int i, int j) { return static_cast<size_t>(i) * N + j; }
 
-int main() {
+bool load_grid_from_csv(const std::string& path, std::vector<double>& grid) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open CSV file: " << path << std::endl;
+        return false;
+    }
+
+    grid.assign(static_cast<size_t>(N) * N, 0.0);
+    std::string line;
+    int row = 0;
+
+    while (row < N && std::getline(file, line)) {
+        if (line.empty()) {
+            continue;
+        }
+
+        std::stringstream line_stream(line);
+        std::string cell;
+        int col = 0;
+
+        while (col < N && std::getline(line_stream, cell, ',')) {
+            std::stringstream cell_stream(cell);
+            double value = 0.0;
+            if (!(cell_stream >> value)) {
+                std::cerr << "Invalid numeric value at row " << row << ", column " << col
+                          << " in " << path << std::endl;
+                return false;
+            }
+            grid[idx(row, col)] = value;
+            ++col;
+        }
+
+        if (col != N) {
+            std::cerr << "Row " << row << " in " << path << " has " << col
+                      << " columns, expected " << N << std::endl;
+            return false;
+        }
+        ++row;
+    }
+
+    if (row != N) {
+        std::cerr << "CSV file " << path << " has " << row << " rows, expected " << N << std::endl;
+        return false;
+    }
+    return true;
+}
+
+int main(int argc, char** argv) {
     // Use flat 1D arrays for better cache behavior and a single swap per iteration
     std::vector<double> C_old(static_cast<size_t>(N) * N, 0.0);
     std::vector<double> C_new(static_cast<size_t>(N) * N, 0.0);
 
-    // Initialize source in the middle
-    const int mid = N / 2;
-    C_old[idx(mid, mid)] = 1e6;
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <input.csv>" << std::endl;
+        return 1;
+    }
+
+    if (!load_grid_from_csv(argv[1], C_old)) {
+        return 1;
+    }
 
     auto t0 = std::chrono::steady_clock::now();
 
